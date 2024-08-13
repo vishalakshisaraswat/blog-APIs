@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const Post = require('../models/post');
 const auth = require('../middleware/auth');
-
 // Get all posts
 router.get('/', async (req, res) => {
     try {
@@ -39,19 +38,34 @@ router.post('/', auth, async (req, res) => {
 // Update a post (protected)
 router.put('/:id', auth, async (req, res) => {
     try {
-        const post = await Post.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        const post = await Post.findById(req.params.id);
         if (!post) return res.status(404).send({ message: 'Post not found' });
+        
+        if (post.author_id.toString() !== req.user.id) {
+            return res.status(403).send({ message: 'You are not authorized to update this post' });
+        }
+
+        Object.assign(post, req.body);
+        await post.save();
         res.send(post);
     } catch (error) {
         res.status(500).send({ error: error.message });
     }
 });
-
 // Delete a post (protected)
 router.delete('/:id', auth, async (req, res) => {
     try {
-        const post = await Post.findByIdAndDelete(req.params.id);
+        const post = await Post.findById(req.params.id);
         if (!post) return res.status(404).send({ message: 'Post not found' });
+
+        // Check if the user is the author of the post
+        if (post.author_id.toString() !== req.user.id) {
+            return res.status(403).send({ message: 'You are not authorized to delete this post' });
+        }
+
+        // Use findByIdAndDelete to remove the post
+        await Post.findByIdAndDelete(req.params.id);
+
         res.send({ message: 'Post deleted' });
     } catch (error) {
         res.status(500).send({ error: error.message });

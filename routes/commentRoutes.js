@@ -5,7 +5,7 @@ const Post = require('../models/post'); // Import Post model to update comments 
 const auth = require('../middleware/auth'); // Ensure auth middleware is used for protected routes
 
 // Get comments for a post
-router.get('/posts/:postId/comments', async (req, res) => {
+router.get('/:postId/comments', async (req, res) => {
     try {
         const comments = await Comment.find({ post_id: req.params.postId }).sort({ createdAt: -1 }).populate('author_id', 'username');
         res.status(200).send(comments);
@@ -15,7 +15,7 @@ router.get('/posts/:postId/comments', async (req, res) => {
 });
 
 // Get single comment
-router.get('/comments/:id', async (req, res) => {
+router.get('/:id', async (req, res) => {
     try {
         const comment = await Comment.findById(req.params.id).populate('author_id', 'username');
         if (!comment) return res.status(404).send('Comment not found');
@@ -26,7 +26,7 @@ router.get('/comments/:id', async (req, res) => {
 });
 
 // Create a new comment
-router.post('/posts/:postId/comments', auth, async (req, res) => {
+router.post('/:postId/comments', auth, async (req, res) => {
     const { postId } = req.params;
     const { content, author_id } = req.body; // Include author_id in request body
 
@@ -46,14 +46,14 @@ router.post('/posts/:postId/comments', auth, async (req, res) => {
         post.comments.push(savedComment._id);
         await post.save();
 
-        res.status(201).send(savedComment);
+        res.status(201).send(savedComment.toObject());
     } catch (error) {
         res.status(400).send(error);
     }
 });
 
 // Update a comment
-router.put('/comments/:id', auth, async (req, res) => {
+router.put('/:id', auth, async (req, res) => {
     try {
         const comment = await Comment.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
         if (!comment) return res.status(404).send('Comment not found.');
@@ -64,14 +64,26 @@ router.put('/comments/:id', auth, async (req, res) => {
 });
 
 // Delete a comment
-router.delete('/comments/:id', auth, async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
     try {
-        const comment = await Comment.findByIdAndRemove(req.params.id);
-        if (!comment) return res.status(404).send('Comment not found.');
+        // Find the comment by ID
+        const comment = await Comment.findById(req.params.id);
+        if (!comment) return res.status(404).send({ message: 'Comment not found.' });
+
+        if (comment.author_id.toString() !== req.user.id) {
+            return res.status(403).send({ message: 'You are not authorized to delete this comment.' });
+        }
+
+        // Delete the comment
+        await comment.deleteOne();  
+
+        await Post.findByIdAndUpdate(comment.post_id, { $pull: { comments: req.params.id } });
+
         res.send({ message: 'Comment deleted' });
     } catch (error) {
-        res.status(500).send(error);
+        res.status(500).send({ error: error.message });
     }
 });
+
 
 module.exports = router;
